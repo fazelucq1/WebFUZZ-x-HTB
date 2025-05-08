@@ -18,7 +18,7 @@
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/yourusername/webfuzz-x-htb.git
+   git clone https://github.com/fazelucq1/webfuzz-x-htb.git
    cd webfuzz-x-htb
    ```
 
