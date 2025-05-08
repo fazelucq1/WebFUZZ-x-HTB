@@ -38,7 +38,7 @@
 
 5. **Run the App (with sudo)**:
    ```bash
-   sudo python web_fuzz_app.py
+   sudo python app.py
    ```
 
 6. **Access the Tool**:
@@ -54,12 +54,12 @@
 ```
 WebFUZZ-x-HTB/
 ├── README.md
-├── web_fuzz_app.py
+├── app.py
 └── templates/
     └── index.html
 ```
 
-- `web_fuzz_app.py`: Core Flask application handling enumeration and report generation.
+- `app.py`: Core Flask application handling enumeration and report generation.
 - `templates/index.html`: Web interface with Tailwind CSS and JavaScript for real-time updates.
 - `report.html`: Generated report file (created after enumeration).
 
