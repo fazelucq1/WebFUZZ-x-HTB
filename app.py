@@ -1,3 +1,4 @@
+from flask import Flask, request, render_template, send_from_directory, Response
 import sys
 import subprocess
 import ipaddress
@@ -8,9 +9,20 @@ import json
 import requests
 from urllib.parse import urlparse
 import threading
+import time
+
+app = Flask(__name__)
+
+# Variabili globali per lo stato della scansione
+scan_status = {
+    'nmap': 'idle',
+    'ffuf_dir': 'idle',
+    'gobuster': 'idle',
+    'ffuf_vhost': 'idle',
+    'status': 'idle'
+}
 
 # Utility Functions
-
 def validate_ip(ip):
     """Validate the provided IP address."""
     try:
@@ -21,40 +33,29 @@ def validate_ip(ip):
 
 def check_tool(tool):
     """Check if a tool is installed."""
-    if shutil.which(tool) is None:
-        print(f"{tool} is not installed. Please install it before proceeding.")
-        sys.exit(1)
+    return shutil.which(tool) is not None
 
 def get_seclists_path():
     """Find or verify the path to Seclists."""
     seclists_path = "/usr/share/seclists"
-    if os.path.exists(seclists_path):
-        return seclists_path
-    else:
-        print("Seclists not found in /usr/share/seclists. Please install it manually.")
-        sys.exit(1)
+    return seclists_path if os.path.exists(seclists_path) else None
 
 def check_hosts_file(ip):
     """Check if the IP is present in /etc/hosts and return the associated hostname if exists."""
     hosts_file = "/etc/hosts"
     try:
         with open(hosts_file, "r") as f:
-            lines = f.readlines()
-            for line in lines:
+            for line in f:
                 if ip in line:
                     parts = line.strip().split()
                     if len(parts) > 1 and parts[0] == ip:
-                        return parts[1]  # Return the first hostname associated
-    except PermissionError:
-        print("Insufficient permissions to read /etc/hosts. Run with sudo.")
-        sys.exit(1)
-    except FileNotFoundError:
-        print("File /etc/hosts not found.")
-        sys.exit(1)
+                        return parts[1]
+    except:
+        return None
     return None
 
 def add_to_hosts(ip, hostname):
-    """Add a line <IP> <hostname> to /etc/hosts."""
+    """Add a line <IP> <hostname> to /etc/hosts or inform user if not possible."""
     hosts_file = "/etc/hosts"
     entry = f"{ip} {hostname}\n"
     try:
@@ -62,11 +63,10 @@ def add_to_hosts(ip, hostname):
             f.write(entry)
         print(f"Added to /etc/hosts: {entry.strip()}")
     except PermissionError:
-        print("Insufficient permissions to modify /etc/hosts. Run with sudo.")
-        sys.exit(1)
+        print("Insufficient permissions to modify /etc/hosts. Please add manually:")
+        print(entry.strip())
     except IOError as e:
         print(f"Error writing to /etc/hosts: {e}")
-        sys.exit(1)
 
 def get_redirect_hostname(ip):
     """Try to get the hostname from an HTTP redirect."""
@@ -83,19 +83,16 @@ def get_redirect_hostname(ip):
     return None
 
 # Main Functions
-
 def run_nmap(ip):
     """Run a detailed Nmap scan."""
     output_file = "nmap_output.xml"
     cmd = ["nmap", "-sC", "-sV", "-p-", ip, "-oX", output_file]
     try:
-        subprocess.run(cmd, check=True, timeout=600)  # 10-minute timeout
+        subprocess.run(cmd, check=True, timeout=600)
         return output_file
-    except subprocess.TimeoutExpired:
-        print("Nmap scan timed out.")
-        return None
-    except subprocess.CalledProcessError as e:
-        print(f"Error during Nmap scan: {e}")
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
+        print(f"Nmap error: {e}")
+        scan_status['nmap'] = 'error'
         return None
 
 def get_open_services(xml_file):
@@ -110,16 +107,10 @@ def get_open_services(xml_file):
         if state is not None and state.get("state") == "open":
             portid = port.get("portid")
             service = port.find("service")
-            if service is not None:
-                service_name = service.get("name", "")
-                product = service.get("product", "")
-                version = service.get("version", "")
-                services.append({
-                    "port": portid,
-                    "service": service_name,
-                    "product": product,
-                    "version": version
-                })
+            service_name = service.get("name", "") if service else ""
+            product = service.get("product", "") if service else ""
+            version = service.get("version", "") if service else ""
+            services.append({"port": portid, "service": service_name, "product": product, "version": version})
     return services
 
 def get_http_ports(xml_file):
@@ -133,87 +124,71 @@ def get_http_ports(xml_file):
         state = port.find("state")
         if state is not None and state.get("state") == "open":
             service = port.find("service")
-            if service is not None:
-                service_name = service.get("name", "").lower()
+            if service is not None and "http" in service.get("name", "").lower():
                 portid = port.get("portid")
-                if "http" in service_name:
-                    protocol = "https" if "ssl" in service_name or "https" in service_name or portid == "443" else "http"
-                    http_ports.append((portid, protocol))
+                protocol = "https" if "ssl" in service.get("name", "").lower() or portid == "443" else "http"
+                http_ports.append((portid, protocol))
     return http_ports
 
 def run_ffuf_directory(hostname, port, protocol, seclists_path, results):
-    """Run FFUF for directory enumeration and save results to a dictionary."""
+    """Run FFUF for directory enumeration."""
+    if not seclists_path:
+        results[port] = []
+        return
     wordlist = os.path.join(seclists_path, "Discovery", "Web-Content", "common.txt")
     output_file = f"ffuf_directory_{port}.json"
     url = f"{protocol}://{hostname}:{port}/FUZZ"
     cmd = ["ffuf", "-w", wordlist, "-u", url, "-o", output_file, "-of", "json", "-mc", "200"]
     try:
-        subprocess.run(cmd, check=True, timeout=3600)  # 1-hour timeout
+        subprocess.run(cmd, check=True, timeout=3600)
         results[port] = parse_ffuf_json(output_file)
-    except subprocess.TimeoutExpired:
-        print(f"FFUF directory on port {port} timed out.")
-        results[port] = []
-    except subprocess.CalledProcessError as e:
-        print(f"Error during FFUF directory on port {port}: {e}")
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
+        print(f"FFUF directory error on port {port}: {e}")
         results[port] = []
 
 def run_gobuster_subdomains(hostname, seclists_path, results):
-    """Run Gobuster for subdomain enumeration and save results to a list."""
+    """Run Gobuster for subdomain enumeration."""
+    if not seclists_path:
+        return
     wordlist = os.path.join(seclists_path, "Discovery", "DNS", "subdomains-top1million-5000.txt")
     output_file = "gobuster_subdomains.txt"
     cmd = ["gobuster", "dns", "-d", hostname, "-w", wordlist, "-o", output_file, "--no-color"]
     try:
-        subprocess.run(cmd, check=True, timeout=3600)  # 1-hour timeout
+        subprocess.run(cmd, check=True, timeout=3600)
         results.extend(parse_gobuster_output(output_file))
-    except subprocess.TimeoutExpired:
-        print("Gobuster subdomains timed out.")
-    except subprocess.CalledProcessError as e:
-        print(f"Error during Gobuster subdomains: {e}")
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
+        print(f"Gobuster error: {e}")
 
 def parse_gobuster_output(output_file):
-    """Parse Gobuster output file and return found subdomains."""
-    if not output_file or not os.path.exists(output_file):
+    """Parse Gobuster output file."""
+    if not os.path.exists(output_file):
         return []
-    try:
-        with open(output_file, "r") as f:
-            lines = f.readlines()
-            subdomains = []
-            for line in lines:
-                if "Found: " in line:
-                    subdomain = line.split("Found: ")[1].strip()
-                    subdomains.append(subdomain)
-            return subdomains
-    except IOError as e:
-        print(f"Error reading Gobuster file: {e}")
-        return []
+    with open(output_file, "r") as f:
+        return [line.split("Found: ")[1].strip() for line in f if "Found: " in line]
 
 def run_ffuf_vhosts(ip, port, protocol, seclists_path, results):
-    """Run FFUF for virtual host enumeration and save results to a dictionary."""
+    """Run FFUF for virtual host enumeration."""
+    if not seclists_path:
+        results[port] = []
+        return
     wordlist = os.path.join(seclists_path, "Discovery", "Web-Content", "common.txt")
     output_file = f"ffuf_vhosts_{port}.json"
     url = f"{protocol}://{ip}:{port}/"
     cmd = ["ffuf", "-w", wordlist, "-u", url, "-H", "Host: FUZZ", "-o", output_file, "-of", "json", "-mc", "200"]
     try:
-        subprocess.run(cmd, check=True, timeout=3600)  # 1-hour timeout
+        subprocess.run(cmd, check=True, timeout=3600)
         results[port] = parse_ffuf_json(output_file)
-    except subprocess.TimeoutExpired:
-        print(f"FFUF vhosts on port {port} timed out.")
-        results[port] = []
-    except subprocess.CalledProcessError as e:
-        print(f"Error during FFUF vhosts on port {port}: {e}")
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
+        print(f"FFUF vhosts error on port {port}: {e}")
         results[port] = []
 
 def parse_ffuf_json(json_file):
-    """Parse FFUF JSON file and return found results."""
-    if not json_file or not os.path.exists(json_file):
+    """Parse FFUF JSON file."""
+    if not os.path.exists(json_file):
         return []
-    try:
-        with open(json_file, "r") as f:
-            data = json.load(f)
-            return [result["input"]["FUZZ"] for result in data["results"]]
-    except (json.JSONDecodeError, KeyError, IOError) as e:
-        print(f"Error parsing FFUF file: {e}")
-        return []
+    with open(json_file, "r") as f:
+        data = json.load(f)
+        return [result["input"]["FUZZ"] for result in data["results"]]
 
 def generate_report(ip, hostname, open_services, ffuf_directory_results, gobuster_subdomains_results, ffuf_vhosts_results):
     """Generate a detailed HTML report."""
@@ -231,45 +206,14 @@ def generate_report(ip, hostname, open_services, ffuf_directory_results, gobuste
         {f'<p class="mb-4 text-lg">Hostname: {hostname}</p>' if hostname else '<p class="mb-4 text-lg">Nessun hostname trovato.</p>'}
         <h2 class="text-2xl font-semibold mb-2">Porte Aperte</h2>
         <ul class="list-disc pl-5 mb-6">
-    """
-    for service in open_services:
-        html_content += f'<li class="mb-1">Porta {service["port"]}: {service["service"]} {service["product"]} {service["version"]}</li>'
-    html_content += """
+    """ + "".join([f'<li class="mb-1">Porta {s["port"]}: {s["service"]} {s["product"]} {s["version"]}</li>' for s in open_services]) + """
         </ul>
         <h2 class="text-2xl font-semibold mb-2">Enumerazione Directory</h2>
-    """
-    for port, discovered in ffuf_directory_results.items():
-        html_content += f'<h3 class="text-xl font-medium mb-2">Porta {port}</h3>'
-        if discovered:
-            html_content += '<ul class="list-disc pl-5 mb-4">'
-            for item in discovered:
-                html_content += f'<li>{item}</li>'
-            html_content += '</ul>'
-        else:
-            html_content += '<p class="mb-4">Nessuna directory trovata.</p>'
-    html_content += """
+    """ + "".join([f'<h3 class="text-xl font-medium mb-2">Porta {port}</h3><ul class="list-disc pl-5 mb-4">' + "".join([f'<li>{item}</li>' for item in discovered]) + '</ul>' if discovered else f'<h3 class="text-xl font-medium mb-2">Porta {port}</h3><p class="mb-4">Nessuna directory trovata.</p>' for port, discovered in ffuf_directory_results.items()]) + """
         <h2 class="text-2xl font-semibold mb-2">Enumerazione Sottodomini</h2>
-    """
-    if gobuster_subdomains_results:
-        html_content += '<ul class="list-disc pl-5 mb-4">'
-        for subdomain in gobuster_subdomains_results:
-            html_content += f'<li>{subdomain}</li>'
-        html_content += '</ul>'
-    else:
-        html_content += '<p class="mb-4">Nessun sottodominio trovato.</p>'
-    html_content += """
+    """ + (f'<ul class="list-disc pl-5 mb-4">' + "".join([f'<li>{sub}</li>' for sub in gobuster_subdomains_results]) + '</ul>' if gobuster_subdomains_results else '<p class="mb-4">Nessun sottodominio trovato.</p>') + """
         <h2 class="text-2xl font-semibold mb-2">Enumerazione Virtual Host</h2>
-    """
-    for port, vhosts in ffuf_vhosts_results.items():
-        html_content += f'<h3 class="text-xl font-medium mb-2">Porta {port}</h3>'
-        if vhosts:
-            html_content += '<ul class="list-disc pl-5 mb-4">'
-            for vhost in vhosts:
-                html_content += f'<li>{vhost}</li>'
-            html_content += '</ul>'
-        else:
-            html_content += '<p class="mb-4">Nessun virtual host trovato.</p>'
-    html_content += """
+    """ + "".join([f'<h3 class="text-xl font-medium mb-2">Porta {port}</h3><ul class="list-disc pl-5 mb-4">' + "".join([f'<li>{vhost}</li>' for vhost in vhosts]) + '</ul>' if vhosts else f'<h3 class="text-xl font-medium mb-2">Porta {port}</h3><p class="mb-4">Nessun virtual host trovato.</p>' for port, vhosts in ffuf_vhosts_results.items()]) + """
     </div>
 </body>
 </html>
@@ -278,77 +222,91 @@ def generate_report(ip, hostname, open_services, ffuf_directory_results, gobuste
         f.write(html_content)
     print(f"Report generated at: {os.path.abspath('report.html')}")
 
-# Main Function
+def run_scan(ip):
+    """Run the full scan process."""
+    global scan_status
+    scan_status = {k: 'idle' for k in scan_status}
+    scan_status['status'] = 'running'
 
-def main():
-    if len(sys.argv) != 2:
-        print("Usage: python script.py <ip-address>")
-        sys.exit(1)
-
-    ip = sys.argv[1]
-    if not validate_ip(ip):
-        print("Invalid IP address.")
-        sys.exit(1)
-
-    # Check for required tools
-    check_tool("nmap")
-    check_tool("ffuf")
-    check_tool("gobuster")
+    if not all(check_tool(t) for t in ["nmap", "ffuf", "gobuster"]):
+        scan_status['status'] = 'error'
+        return
     seclists_path = get_seclists_path()
 
-    # Check /etc/hosts for IP
-    hostname = check_hosts_file(ip)
-    if not hostname:
-        # If not present, try to find hostname via HTTP redirect
-        hostname = get_redirect_hostname(ip)
-        if hostname:
-            add_to_hosts(ip, hostname)
-        else:
-            print("No hostname found via redirect. Proceeding without hostname.")
+    hostname = check_hosts_file(ip) or get_redirect_hostname(ip)
+    if hostname:
+        add_to_hosts(ip, hostname)
 
-    # Run Nmap scan
+    scan_status['nmap'] = 'running'
     nmap_file = run_nmap(ip)
+    scan_status['nmap'] = 'done' if nmap_file else 'error'
     if not nmap_file:
-        print("Error in Nmap scan. Exiting.")
-        sys.exit(1)
+        scan_status['status'] = 'error'
+        return
 
-    # Get open services and HTTP ports
     open_services = get_open_services(nmap_file)
     http_ports = get_http_ports(nmap_file)
 
-    # Dictionaries and lists for results
     ffuf_directory_results = {}
     gobuster_subdomains_results = []
     ffuf_vhosts_results = {}
-
-    # List for threads
     threads = []
 
-    # Create threads for FFUF directory enumeration
+    scan_status['ffuf_dir'] = 'running'
     for port, protocol in http_ports:
         if hostname:
             thread = threading.Thread(target=run_ffuf_directory, args=(hostname, port, protocol, seclists_path, ffuf_directory_results))
             threads.append(thread)
             thread.start()
+    for thread in threads:
+        thread.join()
+    scan_status['ffuf_dir'] = 'done'
 
-    # Create thread for Gobuster subdomain enumeration
+    scan_status['gobuster'] = 'running'
     if hostname:
         thread = threading.Thread(target=run_gobuster_subdomains, args=(hostname, seclists_path, gobuster_subdomains_results))
         threads.append(thread)
         thread.start()
+        thread.join()
+    scan_status['gobuster'] = 'done'
 
-    # Create threads for FFUF vhost enumeration
+    scan_status['ffuf_vhost'] = 'running'
+    threads = []
     for port, protocol in http_ports:
         thread = threading.Thread(target=run_ffuf_vhosts, args=(ip, port, protocol, seclists_path, ffuf_vhosts_results))
         threads.append(thread)
         thread.start()
-
-    # Wait for all threads to complete
     for thread in threads:
         thread.join()
+    scan_status['ffuf_vhost'] = 'done'
 
-    # Generate the report
     generate_report(ip, hostname, open_services, ffuf_directory_results, gobuster_subdomains_results, ffuf_vhosts_results)
+    scan_status['status'] = 'done'
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/start', methods=['POST'])
+def start_scan():
+    ip = request.form.get('ip')
+    if not validate_ip(ip):
+        return "Invalid IP address.", 400
+    threading.Thread(target=run_scan, args=(ip,)).start()
+    return "Scan started.", 200
+
+@app.route('/progress')
+def progress():
+    def generate():
+        while scan_status['status'] not in ['done', 'error']:
+            yield f"data: {','.join([scan_status[k] for k in ['nmap', 'ffuf_dir', 'gobuster', 'ffuf_vhost', 'status']])}\n\n"
+            time.sleep(1)
+        yield f"data: {','.join([scan_status[k] for k in ['nmap', 'ffuf_dir', 'gobuster', 'ffuf_vhost', 'status']])}\n\n"
+    return Response(generate(), mimetype='text/event-stream')
+
+@app.route('/report')
+def report():
+    return send_from_directory('.', 'report.html')
 
 if __name__ == "__main__":
-    main()
+    app.run(debug=True)
