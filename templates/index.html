@@ -1,1 +1,60 @@
-
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>WebFUZZ x HTB</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .loading { display: none; }
+        .loading.active { display: block; }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: inline-block; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center">
+    <div class="max-w-md w-full p-6 bg-gray-800 rounded-lg shadow-lg">
+        <h1 class="text-3xl font-bold mb-6 text-center">WebFUZZ x HTB</h1>
+        <form id="enum-form" class="mb-6">
+            <label for="ip" class="block text-lg mb-2">Indirizzo IP:</label>
+            <input type="text" id="ip" name="ip" class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:border-blue-500" required>
+            <button type="button" id="start-button" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded">Avvia Enumerazione</button>
+        </form>
+        <div id="nmap-loading" class="loading flex items-center mb-4"><span class="spinner mr-2"></span>Scansione Nmap in corso...</div>
+        <div id="ffuf-dir-loading" class="loading flex items-center mb-4"><span class="spinner mr-2"></span>Enumerazione directory FFUF in corso...</div>
+        <div id="gobuster-loading" class="loading flex items-center mb-4"><span class="spinner mr-2"></span>Scansione Gobuster in corso...</div>
+        <div id="ffuf-vhost-loading" class="loading flex items-center mb-4"><span class="spinner mr-2"></span>Enumerazione VHost FFUF in corso...</div>
+        <a id="report-link" href="/report" class="hidden mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 rounded text-center">Visualizza Report</a>
+    </div>
+    <script>
+        document.getElementById('start-button').addEventListener('click', function() {
+            const ip = document.getElementById('ip').value;
+            if (!ip) {
+                alert('Inserisci un IP valido.');
+                return;
+            }
+            fetch('/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `ip=${encodeURIComponent(ip)}`
+            }).then(response => {
+                if (response.ok) {
+                    const eventSource = new EventSource('/progress');
+                    eventSource.onmessage = function(event) {
+                        const [nmap, ffufDir, gobuster, ffufVhost, status] = event.data.split(',');
+                        document.getElementById('nmap-loading').classList.toggle('active', nmap === 'running');
+                        document.getElementById('ffuf-dir-loading').classList.toggle('active', ffufDir === 'running');
+                        document.getElementById('gobuster-loading').classList.toggle('active', gobuster === 'running');
+                        document.getElementById('ffuf-vhost-loading').classList.toggle('active', ffufVhost === 'running');
+                        if (status === 'done') {
+                            document.getElementById('report-link').classList.remove('hidden');
+                            eventSource.close();
+                        }
+                    };
+                }
+            });
+        });
+    </script>
+</body>
+</html>
