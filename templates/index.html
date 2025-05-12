@@ -5,10 +5,30 @@
     <title>WebFUZZ x HTB</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
-        .loading { display: none; }
-        .loading.active { display: block; }
-        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: inline-block; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .status-icon.loading {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+        .status-icon.done {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background-color: #34D399;
+            color: white;
+            text-align: center;
+            line-height: 24px;
+            font-size: 16px;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex items-center justify-center">
@@ -19,10 +39,22 @@
             <input type="text" id="ip" name="ip" class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:border-blue-500" required>
             <button type="button" id="start-button" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded">Avvia Enumerazione</button>
         </form>
-        <div id="nmap-loading" class="loading flex items-center mb-4"><span class="spinner mr-2"></span>Scansione Nmap in corso...</div>
-        <div id="ffuf-dir-loading" class="loading flex items-center mb-4"><span class="spinner mr-2"></span>Enumerazione directory FFUF in corso...</div>
-        <div id="gobuster-loading" class="loading flex items-center mb-4"><span class="spinner mr-2"></span>Scansione Gobuster in corso...</div>
-        <div id="ffuf-vhost-loading" class="loading flex items-center mb-4"><span class="spinner mr-2"></span>Enumerazione VHost FFUF in corso...</div>
+        <div id="nmap-status" class="flex items-center mb-4">
+            <div class="status-icon"></div>
+            <span>Scansione Nmap</span>
+        </div>
+        <div id="ffuf-dir-status" class="flex items-center mb-4">
+            <div class="status-icon"></div>
+            <span>Enumerazione directory FFUF</span>
+        </div>
+        <div id="gobuster-status" class="flex items-center mb-4">
+            <div class="status-icon"></div>
+            <span>Scansione Gobuster</span>
+        </div>
+        <div id="ffuf-vhost-status" class="flex items-center mb-4">
+            <div class="status-icon"></div>
+            <span>Enumerazione VHost FFUF</span>
+        </div>
         <a id="report-link" href="/report" class="hidden mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 rounded text-center">Visualizza Report</a>
     </div>
     <script>
@@ -43,10 +75,10 @@
                     const eventSource = new EventSource('/progress');
                     eventSource.onmessage = function(event) {
                         const [nmap, ffufDir, gobuster, ffufVhost, status] = event.data.split(',');
-                        document.getElementById('nmap-loading').classList.toggle('active', nmap === 'running');
-                        document.getElementById('ffuf-dir-loading').classList.toggle('active', ffufDir === 'running');
-                        document.getElementById('gobuster-loading').classList.toggle('active', gobuster === 'running');
-                        document.getElementById('ffuf-vhost-loading').classList.toggle('active', ffufVhost === 'running');
+                        updateStatus('nmap', nmap);
+                        updateStatus('ffuf-dir', ffufDir);
+                        updateStatus('gobuster', gobuster);
+                        updateStatus('ffuf-vhost', ffufVhost);
                         if (status === 'done') {
                             document.getElementById('report-link').classList.remove('hidden');
                             eventSource.close();
@@ -55,6 +87,20 @@
                 }
             });
         });
+
+        function updateStatus(id, status) {
+            const statusElement = document.getElementById(id + '-status').querySelector('.status-icon');
+            if (status === 'running') {
+                statusElement.className = 'status-icon loading';
+                statusElement.innerHTML = '';
+            } else if (status === 'done') {
+                statusElement.className = 'status-icon done';
+                statusElement.innerHTML = '✓';
+            } else {
+                statusElement.className = '';
+                statusElement.innerHTML = '';
+            }
+        }
     </script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'93e820af7cf5b039',t:'MTc0NzAzNDE1NS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
