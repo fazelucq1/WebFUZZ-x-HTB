@@ -43,7 +43,7 @@
             <div class="status-icon"></div>
             <span>Scansione Nmap</span>
         </div>
-        <div id="ffuf-dir-status" class="flex items-center mb-4">
+        <div id="ffuf_dir-status" class="flex items-center mb-4">
             <div class="status-icon"></div>
             <span>Enumerazione directory FFUF</span>
         </div>
@@ -51,7 +51,7 @@
             <div class="status-icon"></div>
             <span>Scansione Gobuster</span>
         </div>
-        <div id="ffuf-vhost-status" class="flex items-center mb-4">
+        <div id="ffuf_vhost-status" class="flex items-center mb-4">
             <div class="status-icon"></div>
             <span>Enumerazione VHost FFUF</span>
         </div>
@@ -76,9 +76,9 @@
                     eventSource.onmessage = function(event) {
                         const [nmap, ffufDir, gobuster, ffufVhost, status] = event.data.split(',');
                         updateStatus('nmap', nmap);
-                        updateStatus('ffuf-dir', ffufDir);
+                        updateStatus('ffuf_dir', ffufDir);
                         updateStatus('gobuster', gobuster);
-                        updateStatus('ffuf-vhost', ffufVhost);
+                        updateStatus('ffuf_vhost', ffufVhost);
                         if (status === 'done') {
                             document.getElementById('report-link').classList.remove('hidden');
                             eventSource.close();
