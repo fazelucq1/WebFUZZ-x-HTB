@@ -13,7 +13,6 @@ import time
 
 app = Flask(__name__)
 
-# Variabili globali per lo stato della scansione
 scan_status = {
     'nmap': 'idle',
     'ffuf_dir': 'idle',
@@ -22,7 +21,7 @@ scan_status = {
     'status': 'idle'
 }
 
-# Utility Functions
+
 def validate_ip(ip):
     """Validate the provided IP address."""
     try:
@@ -82,7 +81,7 @@ def get_redirect_hostname(ip):
         pass
     return None
 
-# Main Functions
+
 def run_nmap(ip):
     """Run a detailed Nmap scan."""
     output_file = "nmap_output.xml"
@@ -200,20 +199,20 @@ def generate_report(ip, hostname, open_services, ffuf_directory_results, gobuste
     <title>Report Enumerazione Web - {ip}</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
-<body class="bg-gray-100 p-8">
-    <div class="bg-white p-6 rounded-lg shadow-lg">
-        <h1 class="text-3xl font-bold mb-4">Report Enumerazione Web per {ip}</h1>
-        {f'<p class="mb-4 text-lg">Hostname: {hostname}</p>' if hostname else '<p class="mb-4 text-lg">Nessun hostname trovato.</p>'}
-        <h2 class="text-2xl font-semibold mb-2">Porte Aperte</h2>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center">
+    <div class="max-w-4xl w-full p-6 bg-gray-800 rounded-lg shadow-lg">
+        <h1 class="text-3xl font-bold mb-6 text-center">Report Enumerazione Web per {ip}</h1>
+        {f'<p class="mb-4 text-lg text-center">Hostname: {hostname}</p>' if hostname else '<p class="mb-4 text-lg text-center">Nessun hostname trovato.</p>'}
+        <h2 class="text-2xl font-semibold mb-4">Porte Aperte</h2>
         <ul class="list-disc pl-5 mb-6">
-    """ + "".join([f'<li class="mb-1">Porta {s["port"]}: {s["service"]} {s["product"]} {s["version"]}</li>' for s in open_services]) + """
+            {"".join([f'<li class="mb-2">Porta {s["port"]}: {s["service"]} {s["product"]} {s["version"]}</li>' for s in open_services])}
         </ul>
-        <h2 class="text-2xl font-semibold mb-2">Enumerazione Directory</h2>
-    """ + "".join([f'<h3 class="text-xl font-medium mb-2">Porta {port}</h3><ul class="list-disc pl-5 mb-4">' + "".join([f'<li>{item}</li>' for item in discovered]) + '</ul>' if discovered else f'<h3 class="text-xl font-medium mb-2">Porta {port}</h3><p class="mb-4">Nessuna directory trovata.</p>' for port, discovered in ffuf_directory_results.items()]) + """
-        <h2 class="text-2xl font-semibold mb-2">Enumerazione Sottodomini</h2>
-    """ + (f'<ul class="list-disc pl-5 mb-4">' + "".join([f'<li>{sub}</li>' for sub in gobuster_subdomains_results]) + '</ul>' if gobuster_subdomains_results else '<p class="mb-4">Nessun sottodominio trovato.</p>') + """
-        <h2 class="text-2xl font-semibold mb-2">Enumerazione Virtual Host</h2>
-    """ + "".join([f'<h3 class="text-xl font-medium mb-2">Porta {port}</h3><ul class="list-disc pl-5 mb-4">' + "".join([f'<li>{vhost}</li>' for vhost in vhosts]) + '</ul>' if vhosts else f'<h3 class="text-xl font-medium mb-2">Porta {port}</h3><p class="mb-4">Nessun virtual host trovato.</p>' for port, vhosts in ffuf_vhosts_results.items()]) + """
+        <h2 class="text-2xl font-semibold mb-4">Enumerazione Directory</h2>
+        {"".join([f'<h3 class="text-xl font-medium mb-2">Porta {port}</h3><ul class="list-disc pl-5 mb-4">' + "".join([f'<li>{item}</li>' for item in discovered]) + '</ul>' if discovered else f'<h3 class="text-xl font-medium mb-2">Porta {port}</h3><p class="mb-4">Nessuna directory trovata.</p>' for port, discovered in ffuf_directory_results.items()])}
+        <h2 class="text-2xl font-semibold mb-4">Enumerazione Sottodomini</h2>
+        {f'<ul class="list-disc pl-5 mb-4">' + "".join([f'<li>{sub}</li>' for sub in gobuster_subdomains_results]) + '</ul>' if gobuster_subdomains_results else '<p class="mb-4">Nessun sottodominio trovato.</p>'}
+        <h2 class="text-2xl font-semibold mb-4">Enumerazione Virtual Host</h2>
+        {"".join([f'<h3 class="text-xl font-medium mb-2">Porta {port}</h3><ul class="list-disc pl-5 mb-4">' + "".join([f'<li>{vhost}</li>' for vhost in vhosts]) + '</ul>' if vhosts else f'<h3 class="text-xl font-medium mb-2">Porta {port}</h3><p class="mb-4">Nessun virtual host trovato.</p>' for port, vhosts in ffuf_vhosts_results.items()])}
     </div>
 </body>
 </html>
