@@ -21,9 +21,7 @@ scan_status = {
     'status': 'idle'
 }
 
-
 def validate_ip(ip):
-    """Validate the provided IP address."""
     try:
         ipaddress.ip_address(ip)
         return True
@@ -31,16 +29,13 @@ def validate_ip(ip):
         return False
 
 def check_tool(tool):
-    """Check if a tool is installed."""
     return shutil.which(tool) is not None
 
 def get_seclists_path():
-    """Find or verify the path to Seclists."""
     seclists_path = "/usr/share/seclists"
     return seclists_path if os.path.exists(seclists_path) else None
 
 def check_hosts_file(ip):
-    """Check if the IP is present in /etc/hosts and return the associated hostname if exists."""
     hosts_file = "/etc/hosts"
     try:
         with open(hosts_file, "r") as f:
@@ -54,7 +49,6 @@ def check_hosts_file(ip):
     return None
 
 def add_to_hosts(ip, hostname):
-    """Add a line <IP> <hostname> to /etc/hosts or inform user if not possible."""
     hosts_file = "/etc/hosts"
     entry = f"{ip} {hostname}\n"
     try:
@@ -68,7 +62,6 @@ def add_to_hosts(ip, hostname):
         print(f"Error writing to /etc/hosts: {e}")
 
 def get_redirect_hostname(ip):
-    """Try to get the hostname from an HTTP redirect."""
     try:
         response = requests.get(f"http://{ip}/", allow_redirects=False, timeout=10)
         if response.status_code in (301, 302):
@@ -81,9 +74,7 @@ def get_redirect_hostname(ip):
         pass
     return None
 
-
 def run_nmap(ip):
-    """Run a detailed Nmap scan."""
     output_file = "nmap_output.xml"
     cmd = ["nmap", "-sC", "-sV", "-p-", ip, "-oX", output_file]
     try:
@@ -95,7 +86,6 @@ def run_nmap(ip):
         return None
 
 def get_open_services(xml_file):
-    """Extract all open ports and services from Nmap XML output."""
     if not xml_file or not os.path.exists(xml_file):
         return []
     tree = ET.parse(xml_file)
@@ -106,14 +96,13 @@ def get_open_services(xml_file):
         if state is not None and state.get("state") == "open":
             portid = port.get("portid")
             service = port.find("service")
-            service_name = service.get("name", "") if service else ""
-            product = service.get("product", "") if service else ""
-            version = service.get("version", "") if service else ""
+            service_name = service.get("name", "") if service is not None else ""
+            product = service.get("product", "") if service is not None else ""
+            version = service.get("version", "") if service is not None else ""
             services.append({"port": portid, "service": service_name, "product": product, "version": version})
     return services
 
 def get_http_ports(xml_file):
-    """Extract HTTP/HTTPS ports from Nmap XML output."""
     if not xml_file or not os.path.exists(xml_file):
         return []
     tree = ET.parse(xml_file)
@@ -130,7 +119,6 @@ def get_http_ports(xml_file):
     return http_ports
 
 def run_ffuf_directory(hostname, port, protocol, seclists_path, results):
-    """Run FFUF for directory enumeration."""
     if not seclists_path:
         results[port] = []
         return
@@ -146,7 +134,6 @@ def run_ffuf_directory(hostname, port, protocol, seclists_path, results):
         results[port] = []
 
 def run_gobuster_subdomains(hostname, seclists_path, results):
-    """Run Gobuster for subdomain enumeration."""
     if not seclists_path:
         return
     wordlist = os.path.join(seclists_path, "Discovery", "DNS", "subdomains-top1million-5000.txt")
@@ -159,14 +146,12 @@ def run_gobuster_subdomains(hostname, seclists_path, results):
         print(f"Gobuster error: {e}")
 
 def parse_gobuster_output(output_file):
-    """Parse Gobuster output file."""
     if not os.path.exists(output_file):
         return []
     with open(output_file, "r") as f:
         return [line.split("Found: ")[1].strip() for line in f if "Found: " in line]
 
 def run_ffuf_vhosts(ip, port, protocol, seclists_path, results):
-    """Run FFUF for virtual host enumeration."""
     if not seclists_path:
         results[port] = []
         return
@@ -182,7 +167,6 @@ def run_ffuf_vhosts(ip, port, protocol, seclists_path, results):
         results[port] = []
 
 def parse_ffuf_json(json_file):
-    """Parse FFUF JSON file."""
     if not os.path.exists(json_file):
         return []
     with open(json_file, "r") as f:
@@ -190,7 +174,6 @@ def parse_ffuf_json(json_file):
         return [result["input"]["FUZZ"] for result in data["results"]]
 
 def generate_report(ip, hostname, open_services, ffuf_directory_results, gobuster_subdomains_results, ffuf_vhosts_results):
-    """Generate a detailed HTML report."""
     html_content = f"""
 <!DOCTYPE html>
 <html lang="it">
@@ -222,7 +205,6 @@ def generate_report(ip, hostname, open_services, ffuf_directory_results, gobuste
     print(f"Report generated at: {os.path.abspath('report.html')}")
 
 def run_scan(ip):
-    """Run the full scan process."""
     global scan_status
     scan_status = {k: 'idle' for k in scan_status}
     scan_status['status'] = 'running'
