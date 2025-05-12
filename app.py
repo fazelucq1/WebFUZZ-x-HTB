@@ -218,12 +218,14 @@ def run_scan(ip):
     if hostname:
         add_to_hosts(ip, hostname)
 
+    # Scansione Nmap
     scan_status['nmap'] = 'running'
     nmap_file = run_nmap(ip)
     scan_status['nmap'] = 'done' if nmap_file else 'error'
     if not nmap_file:
         scan_status['status'] = 'error'
         return
+    time.sleep(1)  # Ritardo per visualizzare il passaggio allo stato successivo
 
     open_services = get_open_services(nmap_file)
     http_ports = get_http_ports(nmap_file)
@@ -231,9 +233,10 @@ def run_scan(ip):
     ffuf_directory_results = {}
     gobuster_subdomains_results = []
     ffuf_vhosts_results = {}
-    threads = []
 
+    # Scansione FFUF directory
     scan_status['ffuf_dir'] = 'running'
+    threads = []
     for port, protocol in http_ports:
         if hostname:
             thread = threading.Thread(target=run_ffuf_directory, args=(hostname, port, protocol, seclists_path, ffuf_directory_results))
@@ -242,15 +245,16 @@ def run_scan(ip):
     for thread in threads:
         thread.join()
     scan_status['ffuf_dir'] = 'done'
+    time.sleep(1)  # Ritardo per visualizzare il passaggio allo stato successivo
 
+    # Scansione Gobuster subdomains
     scan_status['gobuster'] = 'running'
     if hostname:
-        thread = threading.Thread(target=run_gobuster_subdomains, args=(hostname, seclists_path, gobuster_subdomains_results))
-        threads.append(thread)
-        thread.start()
-        thread.join()
+        run_gobuster_subdomains(hostname, seclists_path, gobuster_subdomains_results)
     scan_status['gobuster'] = 'done'
+    time.sleep(1)  # Ritardo per visualizzare il passaggio allo stato successivo
 
+    # Scansione FFUF vhost
     scan_status['ffuf_vhost'] = 'running'
     threads = []
     for port, protocol in http_ports:
