@@ -7,7 +7,9 @@
 - **Real-Time Feedback**: Animated loading spinners for each phase (Nmap, FFUF Directory, Gobuster Subdomains, FFUF VHosts).
 - **Polished Reports**: Automatically generates a modern HTML report with Tailwind CSS styling.
 - **Built for HTB**: Tailored for quick and efficient reconnaissance on Hack The Box challenges.
-- 
+## 📷Preview
+![image](https://github.com/user-attachments/assets/45b4974e-f31a-46cb-95d6-f03ee82bab03)
+
 ## 🛠️ Prerequisites
 - Python 3.8+
 - Flask (`pip install flask`)
